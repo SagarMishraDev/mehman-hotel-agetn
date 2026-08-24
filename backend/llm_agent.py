@@ -272,14 +272,84 @@ YOUR JOB:
   your reply that their request has been sent to the hotel team, and include the hotel's
   contact phone number and email from the tool result's "hotel_contact" field, so they have
   a direct contact for reference.
-- FORMATTING: when presenting room/property options or booking details to the guest, use
-  clear line breaks between items -- NOT dense paragraphs and NOT markdown tables (tables
-  render as broken text in WhatsApp/Telegram chat apps). Format each option on its own
-  line(s), e.g.:
-  Goa Palm Villas - Private Pool Villa
-  Rs 18,000/night | up to 4 guests | private pool, AC, WiFi
-  Keep it scannable -- short lines, blank line between options.
+- MULTI-ROOM GUEST SPLIT: if the guest's party needs more than one room, YOU decide how many
+  guests go in each room, and every create_booking_hold call's num_guests must add up EXACTLY
+  to the guest's total party size in state -- never less, never more. After each
+  create_booking_hold result, check the "_guest_count_check" field it returns:
+  "guests_booked_so_far_this_turn" vs "target_total_guests". If "guests_still_unaccounted" is
+  greater than 0, you are NOT done -- book another room (or correct the split) before replying.
+  Do not tell the guest the booking is complete while guests_still_unaccounted > 0.
+- FORMATTING (plain text only -- this is read in WhatsApp/Telegram/a plain chat UI):
+  - NEVER use markdown bold or asterisks (no **text**), no markdown tables, no "#" headers.
+    Do not wrap names in ** ** for emphasis -- just write the name plainly.
+  - When presenting room/property options, put ONE fact per line, blank line between options:
+    Goa Palm Villas - Private Pool Villa
+    Rs 18,000/night
+    Up to 4 guests
+    Amenities: private pool, AC, WiFi
+ 
+  - When confirming a booking hold (after create_booking_hold or modify_booking_hold), also
+    put each fact on its own line -- do NOT cram Hold ID / Total / add-ons onto one line with
+    "|" separators. Use this shape, one block per room, blank line between rooms:
+    Beachfront Suite #2 (new)
+    Hold ID: 58f5bbb8
+    Total: Rs 26,100
+    Add-ons: Airport Pickup, Breakfast
+ 
+  - Keep it scannable -- short lines, no dense paragraphs, no asterisks anywhere.
 """
+ 
+ 
+def _ensure_booking_confirmation_mentioned(final_text: str, trace: list) -> str:
+    """Deterministic safety net. The model is INSTRUCTED to always mention a
+    successful hold in its reply, but instructions aren't guarantees -- some
+    provider responses come back empty or skip it. Rather than let the guest
+    silently not know their booking went through, we check the trace ourselves:
+    if a hold was created/updated this turn and its hold_id isn't already present
+    in the model's reply, we append a plain-text confirmation built directly from
+    the tool result (same format rules: no markdown, one fact per line)."""
+    new_holds = [t for t in trace if t.get("tool") == "create_booking_hold" and "hold_id" in t.get("result", {})]
+    updated_holds = [t for t in trace if t.get("tool") == "modify_booking_hold" and t.get("result", {}).get("status") == "hold_updated"]
+ 
+    if not new_holds and not updated_holds:
+        return final_text
+ 
+    def _hold_id_of(entry, is_update=False):
+        r = entry["result"]
+        return r.get("hold_id", "")
+ 
+    all_ids = [_hold_id_of(h) for h in new_holds] + [_hold_id_of(h) for h in updated_holds]
+    already_mentioned = any(hid and hid in final_text for hid in all_ids)
+    if already_mentioned:
+        return final_text
+ 
+    lines = [final_text.strip()] if final_text.strip() else []
+    if lines:
+        lines.append("")
+    lines.append("Just confirming -- your request has been sent to our team:")
+    lines.append("")
+ 
+    for h in new_holds:
+        r = h["result"]
+        lines.append(f"Hold ID: {r.get('hold_id', 'N/A')}")
+        lines.append(f"Total: Rs {r.get('total_price_inr', 'N/A')}")
+        contact = r.get("hotel_contact", {}) or {}
+        if contact:
+            lines.append(f"Contact: {contact.get('phone', 'N/A')} | {contact.get('email', 'N/A')}")
+        lines.append("")
+ 
+    for h in updated_holds:
+        r = h["result"]
+        upd = r.get("updated", {})
+        lines.append(f"Hold ID: {r.get('hold_id', 'N/A')} (updated)")
+        lines.append(f"New total: Rs {upd.get('total_price_inr', 'N/A')}")
+        contact = r.get("hotel_contact", {}) or {}
+        if contact:
+            lines.append(f"Contact: {contact.get('phone', 'N/A')} | {contact.get('email', 'N/A')}")
+        lines.append("")
+ 
+    lines.append("Our team will reach out shortly to confirm payment and finalize everything.")
+    return "\n".join(lines)
  
  
 def _execute_tool(session_id: str, name: str, tool_input: dict) -> dict:
@@ -342,6 +412,28 @@ def run_agent_turn(session_id: str, user_message: str) -> Dict[str, Any]:
         tool_results_for_history = []
         for call in result["tool_calls"]:
             tool_output = _execute_tool(session_id, call["name"], call["input"])
+ 
+            # Deterministic guardrail (fixes the "2 guests -> 8 guests, but rooms
+            # only add up to 5" bug): the LLM decides how to split a party across
+            # multiple rooms, and that split-arithmetic is exactly the kind of thing
+            # a model can get wrong. Rather than trust it silently, we count the
+            # running total of guests committed across ALL create_booking_hold calls
+            # made so far THIS turn and hand that number back to the model so it can
+            # see, in the next iteration, whether the party is fully accounted for.
+            if call["name"] == "create_booking_hold" and "hold_id" in tool_output:
+                prior_guests = sum(
+                    t["input"].get("num_guests", 0) for t in trace
+                    if t.get("tool") == "create_booking_hold" and "hold_id" in t.get("result", {})
+                )
+                this_call_guests = call["input"].get("num_guests", 0) or 0
+                running_total = prior_guests + this_call_guests
+                target = state.num_guests or running_total
+                tool_output["_guest_count_check"] = {
+                    "guests_booked_so_far_this_turn": running_total,
+                    "target_total_guests": target,
+                    "guests_still_unaccounted": max(target - running_total, 0),
+                }
+ 
             trace.append({"tool": call["name"], "input": call["input"], "result": tool_output})
             tool_results_for_history.append({
                 "tool_use_id": call["id"],
@@ -356,6 +448,13 @@ def run_agent_turn(session_id: str, user_message: str) -> Dict[str, Any]:
         # text-only, but kept as a final safety net).
         if not final_text:
             final_text = "Sorry, that request is taking longer than expected. Could you try rephrasing or simplifying it?"
+ 
+    # Deterministic guarantee (fixes "sometimes doesn't confirm the booking until
+    # asked"): don't rely on the model to REMEMBER to mention a successful hold in
+    # its final reply. If a booking was created/updated this turn but the reply
+    # never actually mentions its hold_id, append a plain-text confirmation built
+    # straight from the tool result -- so the guest is never left without an answer.
+    final_text = _ensure_booking_confirmation_mentioned(final_text, trace)
  
     # Persist ONLY the clean text exchange -- not the tool-call mechanics.
     persisted_history.append({"role": "user", "content": user_message})

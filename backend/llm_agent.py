@@ -29,7 +29,9 @@ from state import GuestState
  
 MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "groq")  # groq is default: free, fast, no rate-limit
                                                         # issues like Gemini's free tier had for us
-MAX_TOOL_ITERATIONS = 4
+MAX_TOOL_ITERATIONS = 5  # last iteration forces a text-only reply (see run_agent_turn),
+                          # so the guest always gets SOME answer instead of a generic
+                          # "taking too long" fallback
  
 # ---------------------------------------------------------------------------
 # Tool schemas -- session_id is deliberately NOT exposed to the model; it's
@@ -130,7 +132,7 @@ TOOL_DEFS = [
     },
     {
         "name": "create_booking_hold",
-        "description": "Create a temporary booking hold once the guest has confirmed they want to proceed with a specific room and has given their name and guest count. This does NOT finalize payment -- it reserves inventory and notifies staff.",
+        "description": "Create a temporary booking hold once the guest has confirmed they want to proceed with a specific room and has given their name and guest count. This does NOT finalize payment -- it reserves inventory and notifies staff. Do NOT use this to modify an existing booking -- use modify_booking_hold instead.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -146,6 +148,27 @@ TOOL_DEFS = [
             "required": ["property_id", "room_type", "check_in", "check_out", "guest_name", "num_guests"],
         },
     },
+    {
+        "name": "get_guest_bookings",
+        "description": "Check whether this guest already has any existing booking holds. ALWAYS call this first when the guest mentions a previous booking, says things like 'upgrade my booking', 'change my reservation', 'I booked earlier', or references something they already booked.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "modify_booking_hold",
+        "description": "Update an EXISTING booking hold (e.g. change guest count, room, or dates) instead of creating a duplicate new one. Only call this AFTER the guest has explicitly confirmed they want to modify their existing booking (not create a new one).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hold_id": {"type": "string"},
+                "room_type": {"type": "string"},
+                "check_in": {"type": "string"},
+                "check_out": {"type": "string"},
+                "num_guests": {"type": "integer"},
+                "add_ons": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["hold_id"],
+        },
+    },
 ]
  
 TOOL_FUNCTIONS = {
@@ -156,25 +179,27 @@ TOOL_FUNCTIONS = {
     "calculate_price": tools.calculate_price,
     "get_policy": tools.get_policy,
     "create_booking_hold": tools.create_booking_hold,
+    "get_guest_bookings": tools.get_guest_bookings,
+    "modify_booking_hold": tools.modify_booking_hold,
 }
  
  
-def _dispatch_provider_call(history: list, system_prompt: str) -> dict:
+def _dispatch_provider_call(history: list, system_prompt: str, allow_tools: bool = True) -> dict:
     if MODEL_PROVIDER == "groq":
-        return _call_groq(history, system_prompt)
+        return _call_groq(history, system_prompt, allow_tools)
     elif MODEL_PROVIDER == "gemini":
-        return _call_gemini(history, system_prompt)
-    return _call_claude(history, system_prompt)
+        return _call_gemini(history, system_prompt, allow_tools)
+    return _call_claude(history, system_prompt, allow_tools)
  
  
-def _call_provider_with_retry(history: list, system_prompt: str, max_retries: int = 2) -> dict:
+def _call_provider_with_retry(history: list, system_prompt: str, max_retries: int = 2, allow_tools: bool = True) -> dict:
     """Free-tier APIs (Gemini, Groq) can hit rate limits (HTTP 429) under
     normal use, especially with our multi-step tool loop firing several
     calls per guest message. Retries with a short backoff before giving
     up, instead of surfacing a transient rate-limit as a hard failure."""
     result = {}
     for attempt in range(max_retries + 1):
-        result = _dispatch_provider_call(history, system_prompt)
+        result = _dispatch_provider_call(history, system_prompt, allow_tools)
         error = result.get("error", "")
         is_rate_limit = "429" in error or "rate limit" in error.lower() or "too many requests" in error.lower()
         if is_rate_limit and attempt < max_retries:
@@ -231,6 +256,29 @@ YOUR JOB:
 - If the guest asks something like "do you remember me?" or references earlier context,
   answer truthfully based on the actual current state shown above -- do not just say "yes"
   without checking it's actually still accurate.
+- BOOKING CONTINUITY: if the guest mentions a previous booking in ANY way ("upgrade my
+  booking", "change my reservation", "I already booked", "before checkout", etc.), call
+  get_guest_bookings FIRST. If they have an existing hold, explicitly ask them to confirm:
+  "Would you like to update your existing booking, or make a new separate one?" Only call
+  modify_booking_hold (for updating) or create_booking_hold (for a genuinely new, separate
+  booking) after they've clearly answered that question. NEVER silently create a new
+  booking when they meant to upgrade an existing one, and never silently modify one when
+  they wanted a new one.
+- MULTIPLE ROOMS IN ONE REQUEST: if the guest's party doesn't fit in one room and they agree
+  to split into multiple rooms, you may call create_booking_hold multiple times (once per
+  room) within the same turn -- the system automatically combines these into a single
+  notification to staff, so you don't need to worry about sending duplicate messages.
+- AFTER a successful create_booking_hold or modify_booking_hold, always tell the guest in
+  your reply that their request has been sent to the hotel team, and include the hotel's
+  contact phone number and email from the tool result's "hotel_contact" field, so they have
+  a direct contact for reference.
+- FORMATTING: when presenting room/property options or booking details to the guest, use
+  clear line breaks between items -- NOT dense paragraphs and NOT markdown tables (tables
+  render as broken text in WhatsApp/Telegram chat apps). Format each option on its own
+  line(s), e.g.:
+  Goa Palm Villas - Private Pool Villa
+  Rs 18,000/night | up to 4 guests | private pool, AC, WiFi
+  Keep it scannable -- short lines, blank line between options.
 """
  
  
@@ -250,27 +298,42 @@ def _execute_tool(session_id: str, name: str, tool_input: dict) -> dict:
 def run_agent_turn(session_id: str, user_message: str) -> Dict[str, Any]:
     """Runs one full agent turn: may involve several tool calls before the
     final natural-language reply. Returns the reply plus a full trace of
-    every tool call + result, for the UI's debug panel."""
+    every tool call + result, for the UI's debug panel.
+ 
+    Design note: `working` (the live tool-calling back-and-forth) is kept
+    SEPARATE from what gets persisted to the database. Only the final
+    plain-text exchange (user message + final reply) is saved for future
+    turns. This avoids replaying provider-specific tool_use/tool_result
+    formatting across turns -- some models (e.g. Groq's gpt-oss via its
+    "Harmony" template) get confused re-parsing old tool-call structures
+    from a prior turn. Since the guest state is always freshly re-injected
+    into the system prompt every turn anyway, old tool-call plumbing isn't
+    needed for correctness -- only the human-readable conversation is."""
     import db
-    history = db.load_history(session_id)
-    history.append({"role": "user", "content": user_message})
+    persisted_history = db.load_history(session_id)  # plain text turns only
+    working = list(persisted_history)
+    working.append({"role": "user", "content": user_message})
  
     trace = []
     final_text = ""
  
-    for _ in range(MAX_TOOL_ITERATIONS):
+    for i in range(MAX_TOOL_ITERATIONS):
         state = db.load_state(session_id)
         system_prompt = build_system_prompt(state)
  
-        result = _call_provider_with_retry(history, system_prompt)
+        # On the LAST allowed iteration, force a text-only reply (no tools)
+        # so the model can't keep looping on tool calls and leave the guest
+        # with nothing -- it must answer conversationally with whatever it
+        # already knows.
+        is_last_iteration = (i == MAX_TOOL_ITERATIONS - 1)
+        result = _call_provider_with_retry(working, system_prompt, allow_tools=not is_last_iteration)
  
         if result.get("error"):
             trace.append({"type": "error", "message": result["error"]})
             final_text = "Sorry, I ran into an issue processing that. Could you try rephrasing?"
             break
  
-        # Append assistant's turn (text + any tool_use) to history in provider-neutral form
-        history.append({"role": "assistant", "content": result["raw_content"]})
+        working.append({"role": "assistant", "content": result["raw_content"]})
  
         if not result["tool_calls"]:
             final_text = result["text"]
@@ -286,25 +349,18 @@ def run_agent_turn(session_id: str, user_message: str) -> Dict[str, Any]:
                 "output": tool_output,
             })
  
-        history.append({"role": "user", "content": _format_tool_results(tool_results_for_history)})
+        working.append({"role": "user", "content": _format_tool_results(tool_results_for_history)})
     else:
-        # Loop exhausted MAX_TOOL_ITERATIONS without a final text-only reply
-        final_text = final_text or "Sorry, that's taking a bit long -- could you rephrase or simplify your request?"
+        # Loop exhausted MAX_TOOL_ITERATIONS without a final text reply
+        # (shouldn't normally happen now that the last iteration forces
+        # text-only, but kept as a final safety net).
+        if not final_text:
+            final_text = "Sorry, that request is taking longer than expected. Could you try rephrasing or simplifying it?"
  
-    # Make sure the final reply is always represented in saved history exactly
-    # once. If the last saved turn was already this exact assistant text
-    # (the normal happy-path case, via raw_content above), don't duplicate it.
-    last_msg = history[-1] if history else None
-    already_saved = (
-        last_msg
-        and last_msg["role"] == "assistant"
-        and isinstance(last_msg["content"], list)
-        and any(b.get("type") == "text" and b.get("text", "").strip() == final_text.strip() for b in last_msg["content"])
-    )
-    if not already_saved:
-        history.append({"role": "assistant", "content": final_text})
- 
-    db.save_history(session_id, history)
+    # Persist ONLY the clean text exchange -- not the tool-call mechanics.
+    persisted_history.append({"role": "user", "content": user_message})
+    persisted_history.append({"role": "assistant", "content": final_text})
+    db.save_history(session_id, persisted_history)
  
     final_state = db.load_state(session_id)
     return {"reply": final_text, "trace": trace, "state": final_state.to_dict()}
@@ -316,29 +372,26 @@ def _format_tool_results(tool_results: list):
     _call_* functions when needed. For simplicity here we standardize on
     Claude's format since Claude is the primary provider."""
     return [
-        {
-            "type": "tool_result",
-            "tool_use_id": tr["tool_use_id"],
-            "name": tr["name"],
-            "content": json.dumps(tr["output"]),
-        }
+        {"type": "tool_result", "tool_use_id": tr["tool_use_id"], "content": json.dumps(tr["output"])}
         for tr in tool_results
     ]
  
  
-def _call_claude(history: list, system_prompt: str) -> dict:
+def _call_claude(history: list, system_prompt: str, allow_tools: bool = True) -> dict:
     import anthropic
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
  
     try:
-        resp = client.messages.create(
+        kwargs = dict(
             model="claude-sonnet-4-6",
             max_tokens=800,
             temperature=0,
             system=system_prompt,
-            tools=TOOL_DEFS,
             messages=history,
         )
+        if allow_tools:
+            kwargs["tools"] = TOOL_DEFS
+        resp = client.messages.create(**kwargs)
     except Exception as e:
         return {"error": str(e)}
  
@@ -354,7 +407,7 @@ def _call_claude(history: list, system_prompt: str) -> dict:
     return {"text": " ".join(text_parts).strip(), "tool_calls": tool_calls, "raw_content": raw_content}
  
  
-def _call_groq(history: list, system_prompt: str) -> dict:
+def _call_groq(history: list, system_prompt: str, allow_tools: bool = True) -> dict:
     """Groq/OpenAI-compatible fallback. Note: tool-result formatting differs
     from Claude's, so history format is translated here for this provider."""
     from openai import OpenAI
@@ -374,12 +427,7 @@ def _call_groq(history: list, system_prompt: str) -> dict:
                 if block.get("type") == "text":
                     oa_messages.append({"role": msg["role"], "content": block["text"]})
                 elif block.get("type") == "tool_result":
-                    oa_messages.append({
-                        "role": "tool",
-                        "tool_call_id": block["tool_use_id"],
-                        "name": block.get("name", "unknown_tool"),
-                        "content": block["content"],
-                    })
+                    oa_messages.append({"role": "tool", "tool_call_id": block["tool_use_id"], "content": block["content"]})
                 elif block.get("type") == "tool_use":
                     oa_messages.append({"role": "assistant", "content": None, "tool_calls": [{
                         "id": block["id"], "type": "function",
@@ -387,10 +435,10 @@ def _call_groq(history: list, system_prompt: str) -> dict:
                     }]})
  
     try:
-        resp = client.chat.completions.create(
-            model="openai/gpt-oss-20b", max_tokens=800, temperature=0,
-            messages=oa_messages, tools=openai_tools,
-        )
+        kwargs = dict(model="openai/gpt-oss-20b", max_tokens=800, temperature=0, messages=oa_messages)
+        if allow_tools:
+            kwargs["tools"] = openai_tools
+        resp = client.chat.completions.create(**kwargs)
     except Exception as e:
         return {"error": str(e)}
  
@@ -408,7 +456,7 @@ def _call_groq(history: list, system_prompt: str) -> dict:
     return {"text": text.strip(), "tool_calls": tool_calls, "raw_content": raw_content}
  
  
-def _call_gemini(history: list, system_prompt: str) -> dict:
+def _call_gemini(history: list, system_prompt: str, allow_tools: bool = True) -> dict:
     """Gemini via plain REST (no extra SDK dependency needed -- we already
     use `requests` elsewhere in the project). Gemini's function-calling
     format differs from both Claude and OpenAI: tool calls don't carry an
@@ -458,9 +506,10 @@ def _call_gemini(history: list, system_prompt: str) -> dict:
     body = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": contents,
-        "tools": gemini_tools,
         "generationConfig": {"temperature": 0, "maxOutputTokens": 800},
     }
+    if allow_tools:
+        body["tools"] = gemini_tools
  
     try:
         resp = req.post(url, json=body, timeout=30)

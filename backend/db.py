@@ -127,6 +127,53 @@ def create_hold(hold_id, session_id, property_id, room_type, check_in, check_out
     conn.close()
 
 
+def get_holds_by_session(session_id: str) -> list:
+    """All existing holds for this guest -- used when they reference a
+    previous booking ('upgrade my booking', 'change my reservation')."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT hold_id, property_id, room_type, check_in, check_out, guest_name,
+           num_guests, add_ons, total_price_inr, created_at FROM holds
+           WHERE session_id = ? ORDER BY created_at DESC""",
+        (session_id,),
+    ).fetchall()
+    conn.close()
+    cols = ["hold_id", "property_id", "room_type", "check_in", "check_out", "guest_name",
+            "num_guests", "add_ons", "total_price_inr", "created_at"]
+    return [dict(zip(cols, row)) for row in rows]
+
+
+def get_hold(hold_id: str) -> dict:
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT hold_id, property_id, room_type, check_in, check_out, guest_name,
+           phone_number, num_guests, add_ons, total_price_inr FROM holds WHERE hold_id = ?""",
+        (hold_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    cols = ["hold_id", "property_id", "room_type", "check_in", "check_out", "guest_name",
+            "phone_number", "num_guests", "add_ons", "total_price_inr"]
+    return dict(zip(cols, row))
+
+
+def update_hold(hold_id: str, **fields) -> None:
+    """Partial update of an existing hold -- used when upgrading/modifying
+    a previous booking instead of creating a brand new one."""
+    if not fields:
+        return
+    conn = _get_conn()
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values())
+    if "add_ons" in fields:
+        idx = list(fields.keys()).index("add_ons")
+        values[idx] = json.dumps(values[idx])
+    conn.execute(f"UPDATE holds SET {set_clause} WHERE hold_id = ?", (*values, hold_id))
+    conn.commit()
+    conn.close()
+
+
 def list_all_sessions() -> list:
     """For the admin view: every session that has at least one message,
     with a preview (last message + known destination) so staff can scan

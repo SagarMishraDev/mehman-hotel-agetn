@@ -263,9 +263,73 @@ def create_booking_hold(session_id: str, property_id: str, room_type: str,
     state.merge({"stage": "hold_created", "selected_property_id": property_id, "selected_room_type": room_type})
     db.save_state(session_id, state)
 
+    prop = PROPERTIES[property_id]
     return {
         "hold_id": hold_id,
         "status": "hold_created",
         "total_price_inr": pricing.get("grand_total_inr"),
+        "hotel_contact": prop.get("contact", {}),
         "note": "This is a temporary hold, not a final confirmed booking. Our team will reach out to confirm payment.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# TOOL 8: get_guest_bookings
+# ---------------------------------------------------------------------------
+def get_guest_bookings(session_id: str) -> dict:
+    """Returns this guest's existing booking holds, if any. Call this
+    whenever the guest references a previous booking (e.g. 'upgrade my
+    booking', 'I booked earlier', 'change my reservation') BEFORE creating
+    a new booking -- so the agent can ask whether to modify the existing
+    one instead of accidentally creating a duplicate."""
+    holds = db.get_holds_by_session(session_id)
+    for h in holds:
+        h["property_name"] = PROPERTIES.get(h["property_id"], {}).get("name", h["property_id"])
+    return {"existing_bookings": holds, "count": len(holds)}
+
+
+# ---------------------------------------------------------------------------
+# TOOL 9: modify_booking_hold
+# ---------------------------------------------------------------------------
+def modify_booking_hold(session_id: str, hold_id: str,
+                         room_type: Optional[str] = None,
+                         check_in: Optional[str] = None,
+                         check_out: Optional[str] = None,
+                         num_guests: Optional[int] = None,
+                         add_ons: Optional[List[str]] = None) -> dict:
+    """Updates an EXISTING hold (e.g. guest wants to upgrade from 4 to 8
+    guests) instead of creating a duplicate new booking. Only call this
+    after the guest has explicitly confirmed they want to modify their
+    existing booking (use get_guest_bookings first, then ask them)."""
+    existing = db.get_hold(hold_id)
+    if not existing:
+        return {"error": f"No existing booking found with hold_id '{hold_id}'."}
+
+    new_room_type = room_type or existing["room_type"]
+    new_check_in = check_in or existing["check_in"]
+    new_check_out = check_out or existing["check_out"]
+    new_guests = num_guests or existing["num_guests"]
+
+    availability = check_availability(existing["property_id"], new_room_type,
+                                       new_check_in, new_check_out, new_guests)
+    if not availability.get("available"):
+        return {"error": "Cannot upgrade -- new requirements are not available.", "details": availability}
+
+    pricing = calculate_price(existing["property_id"], new_room_type, new_check_in,
+                               new_check_out, add_ons, new_guests)
+
+    db.update_hold(hold_id, room_type=new_room_type, check_in=new_check_in,
+                    check_out=new_check_out, num_guests=new_guests,
+                    total_price_inr=pricing.get("grand_total_inr"))
+
+    prop = PROPERTIES[existing["property_id"]]
+    return {
+        "hold_id": hold_id,
+        "status": "hold_updated",
+        "previous": {"room_type": existing["room_type"], "num_guests": existing["num_guests"],
+                     "total_price_inr": existing["total_price_inr"]},
+        "updated": {"room_type": new_room_type, "num_guests": new_guests,
+                    "total_price_inr": pricing.get("grand_total_inr")},
+        "hotel_contact": prop.get("contact", {}),
+        "note": "Booking updated. Our team will confirm the new details and any price difference.",
     }

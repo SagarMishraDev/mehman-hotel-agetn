@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mira — Mehman Assignment</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e8e9ed;
+    --text-dim: #8b8f9c;
+    --accent: #6366f1;
+    --accent-soft: #6366f122;
+    --user-bubble: #6366f1;
+    --agent-bubble: #1e222b;
+    --success: #22c55e;
+    --error: #ef4444;
+    --mono: 'SF Mono', 'Consolas', 'Menlo', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    height: 100vh;
+  }
+  /* ---------- Chat column ---------- */
+  .chat-col {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+  }
+  .header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .header .sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .header button {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .header button:hover { color: var(--text); border-color: var(--accent); }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--user-bubble); color: white; border-bottom-right-radius: 3px; }
+  .msg.agent { align-self: flex-start; background: var(--agent-bubble); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .msg.loading { align-self: flex-start; color: var(--text-dim); font-style: italic; }
+  .input-row {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+  }
+  .input-row input {
+    flex: 1;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+  }
+  .input-row input:focus { border-color: var(--accent); }
+  .input-row button {
+    background: var(--accent);
+    border: none;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* ---------- Debug/trace column ---------- */
+  .debug-col { background: var(--panel); overflow-y: auto; padding: 16px; }
+  .debug-col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin: 20px 0 10px; }
+  .debug-col h2:first-child { margin-top: 0; }
+  .state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 13px; }
+  .state-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+  .state-item .label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; }
+  .state-item .value { margin-top: 2px; font-family: var(--mono); }
+  .state-item.empty .value { color: var(--text-dim); }
+  .trace-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .trace-item .tool-name { padding: 8px 12px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); }
+  .trace-item .tool-body { padding: 10px 12px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; }
+  .trace-item.error .tool-name { color: var(--error); background: #ef444422; }
+  .empty-state { color: var(--text-dim); font-size: 13px; padding: 10px; }
+  .stage-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--accent-soft); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="chat-col">
+    <div class="header">
+      <div>
+        <h1>Mira — Hotel Booking Agent</h1>
+        <div class="sub">Mehman.io assignment demo</div>
+      </div>
+      <button onclick="resetSession()">Reset conversation</button>
+      <a href="/admin" style="color:var(--text-dim);font-size:12px;margin-left:12px;">Admin view →</a>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="input-row">
+      <input id="input" type="text" placeholder="Try: Looking for something in Goa this weekend for 3 people..." onkeydown="if(event.key==='Enter') sendMessage()">
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <div class="debug-col">
+    <h2>Current State</h2>
+    <div class="state-grid" id="stateGrid"></div>
+
+    <h2>Tool Call Trace</h2>
+    <div id="traceLog"><div class="empty-state">No tool calls yet.</div></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+let sessionId = localStorage.getItem('mira_session_id');
+if (!sessionId) {
+  sessionId = 'session-' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem('mira_session_id', sessionId);
+}
+
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const stateGrid = document.getElementById('stateGrid');
+const traceLog = document.getElementById('traceLog');
+
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function renderState(state) {
+  stateGrid.innerHTML = '';
+  const fields = [
+    ['Destination', state.destination],
+    ['Check-in', state.check_in],
+    ['Check-out', state.check_out],
+    ['Guests', state.num_guests],
+    ['Budget/night', state.budget_per_night_inr ? '₹' + state.budget_per_night_inr : null],
+    ['Preferences', (state.room_preferences || []).join(', ')],
+    ['Amenities', (state.amenities_wanted || []).join(', ')],
+    ['Selected room', state.selected_room_type],
+  ];
+  fields.forEach(([label, value]) => {
+    const item = document.createElement('div');
+    item.className = 'state-item' + (value ? '' : ' empty');
+    item.innerHTML = `<div class="label">${label}</div><div class="value">${value || '—'}</div>`;
+    stateGrid.appendChild(item);
+  });
+  const stageDiv = document.createElement('div');
+  stageDiv.style.gridColumn = '1 / -1';
+  stageDiv.innerHTML = `<span class="stage-badge">${state.stage}</span>`;
+  stateGrid.appendChild(stageDiv);
+}
+
+function renderTrace(trace) {
+  if (!trace || trace.length === 0) return;
+  traceLog.innerHTML = '';
+  trace.forEach(t => {
+    const div = document.createElement('div');
+    if (t.type === 'error') {
+      div.className = 'trace-item error';
+      div.innerHTML = `<div class="tool-name">ERROR</div><div class="tool-body">${t.message}</div>`;
+    } else {
+      div.className = 'trace-item';
+      div.innerHTML = `<div class="tool-name">${t.tool}(${JSON.stringify(t.input)})</div>` +
+                       `<div class="tool-body">${JSON.stringify(t.result, null, 2)}</div>`;
+    }
+    traceLog.appendChild(div);
+  });
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = '';
+  sendBtn.disabled = true;
+
+  addMessage('user', text);
+  const loadingEl = addMessage('loading', 'Mira is thinking...');
+
+  try {
+    const resp = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, message: text }),
+    });
+    const data = await resp.json();
+    loadingEl.remove();
+    addMessage('agent', data.reply || '(no reply)');
+    renderState(data.state);
+    renderTrace(data.trace);
+  } catch (e) {
+    loadingEl.remove();
+    addMessage('agent', 'Error connecting to backend: ' + e.message);
+  } finally {
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+async function resetSession() {
+  await fetch(`${API_BASE}/reset/${sessionId}`, { method: 'POST' });
+  messagesEl.innerHTML = '';
+  traceLog.innerHTML = '<div class="empty-state">No tool calls yet.</div>';
+  renderState({});
+  addMessage('agent', "Hi! I'm Mira. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
+}
+
+// Initial load
+(async function init() {
+  try {
+    const resp = await fetch(`${API_BASE}/admin/sessions/${sessionId}`);
+    const data = await resp.json();
+    renderState(data.state);
+
+    if (data.history && data.history.length > 0) {
+      // Restore the actual prior conversation instead of showing the
+      // greeting again -- this is what was making it look like the agent
+      // "forgot" everything on every page reload, even though the backend
+      // state was fine all along.
+      data.history.forEach(msg => {
+        if (typeof msg.content === 'string') {
+          addMessage(msg.role === 'user' ? 'user' : 'agent', msg.content);
+        }
+      });
+    } else {
+      addMessage('agent', "Hi! I'm Mira. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
+    }
+  } catch (e) {
+    renderState({});
+    addMessage('agent', "Hi! I'm Mira. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
+  }
+})();
+</script>
+
+</body>
+</html>

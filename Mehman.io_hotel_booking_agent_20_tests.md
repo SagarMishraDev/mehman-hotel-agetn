@@ -1,4 +1,4 @@
-# Mira --- Hotel Booking Agent
+# Mehman.io --- Hotel Booking Agent
 
 ## 20-Conversation Test Report
 
@@ -37,7 +37,7 @@ agent response, the tools called, and a simple evaluation of each test.
 > Looking for something in Goa this weekend for my 2 friends and me.
 > Something private would be nice.
 
-**Mira:**
+**Mehman.io:**
 
 > Great news --- I found a lovely option that fits your group perfectly!
 >
@@ -79,7 +79,7 @@ agent response, the tools called, and a simple evaluation of each test.
 
 > Need something in Goa next weekend.
 
-**Mira:**
+**Mehman.io:**
 
 > Great, I've got some options at Goa Palm Villas in Candolim, North Goa
 > for the weekend of Aug 29--30. Here's what's available:
@@ -111,7 +111,7 @@ agent response, the tools called, and a simple evaluation of each test.
 
 > Travelling with my wife and 2 kids.
 
-**Mira:**
+**Mehman.io:**
 
 > For a group of 4, there's one great match:
 >
@@ -155,7 +155,7 @@ agent response, the tools called, and a simple evaluation of each test.
 
 > Something with a private pool under 20k.
 
-**Mira:**
+**Mehman.io:**
 
 > I'd love to help you find something with a private pool under ₹20,000/night! I just need a couple more details:
 >
@@ -211,7 +211,7 @@ The guest count was correctly captured in state and the conversation can continu
 
 > Actually make that 4 people and stay one more night.
 
-**Mira:**
+**Mehman.io:**
 
 > It looks like I don't have any previous booking on file for this
 > session, and I also don't have any details about your trip yet ---
@@ -257,7 +257,7 @@ The guest count was correctly captured in state and the conversation can continu
 
 > Guest asks whether a pool is heated
 
-**Mira:**
+**Mehman.io:**
 
 > I'd be happy to help with that question, but I don't have any property or room details to look at just yet!
 >
@@ -299,7 +299,7 @@ The availability tool returned `available: true`, with 2 rooms left for 1 night.
 
 > That looks too expensive.
 
-**Mira:**
+**Mehman.io:**
 
 > I'd love to help you find something more affordable! It looks like
 > we're just getting started, so I don't have any details on file yet.
@@ -337,7 +337,7 @@ The availability tool returned `available: true`, with 2 rooms left for 1 night.
 
 > Whichever is better.
 
-**Mira:**
+**Mehman.io:**
 
 > I'd love to help you find the perfect stay! It seems like your message might have come in without the full context — I don't have any details about your trip yet.
 >
@@ -413,7 +413,7 @@ The search returned two valid options within the requested budget.
 
 > What about the other one?
 
-**Mira:**
+**Mehman.io:**
 
 > I don't have any context from a previous conversation — each session starts fresh for me, so I'm not sure what "the other one" refers to.
 >
@@ -489,7 +489,7 @@ The tool returned two concrete options that can be used to continue the conversa
 
 > Any cheaper option?
 
-**Mira:**
+**Mehman.io:**
 
 > I don't have any previous search results or booking details on file for you yet — this looks like the start of our conversation, so I'm starting fresh!
 >
@@ -563,7 +563,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Need something in Goa next weekend.
 
-**Mira:**
+**Mehman.io:**
 
 > Great, I've got options for Goa for the weekend of 29--30 August!
 > Before I narrow things down, a couple of quick questions:
@@ -599,7 +599,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Travelling with my wife and 2 kids.
 
-**Mira:**
+**Mehman.io:**
 
 > For a group of 4, there's one great fit:
 >
@@ -624,7 +624,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Something with a private pool under 20k.
 
-**Mira:**
+**Mehman.io:**
 
 > There's one property that matches perfectly:
 >
@@ -648,7 +648,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Actually make that 4 people and stay one more night.
 
-**Mira:**
+**Mehman.io:**
 
 > Unfortunately, the Private Pool Villa at Goa Palm Villas is fully
 > booked for 29--31 Aug. There are no alternative rooms at the same
@@ -677,7 +677,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Is the pool heated?
 
-**Mira:**
+**Mehman.io:**
 
 > I don't have that information, unfortunately. I'd suggest checking
 > directly with the property once your booking is confirmed --- they'll
@@ -695,7 +695,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > That looks too expensive.
 
-**Mira:**
+**Mehman.io:**
 
 > I understand! Just to confirm --- are you looking to stay under a
 > certain amount per night? Your current budget is set at Rs
@@ -710,7 +710,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Whichever is better.
 
-**Mira:**
+**Mehman.io:**
 
 > I'd need a bit more guidance to help you best! Could you let me know:
 >
@@ -728,7 +728,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > What about the other one?
 
-**Mira:**
+**Mehman.io:**
 
 > Hmm, it seems the Beachfront Suite isn't coming up in the system for
 > that property. I may have had incorrect details earlier --- I
@@ -749,7 +749,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Any cheaper option?
 
-**Mira:**
+**Mehman.io:**
 
 > Unfortunately, the search is only returning one match --- the Goa Palm
 > Villas Private Pool Villa at Rs 18,000/night. That seems to be the
@@ -804,7 +804,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > I need a hotel in Goa for 2 guests.
 
-**Mira:**
+**Mehman.io:**
 
 > Great news! I found some lovely options at Goa Palm Villas in
 > Candolim, North Goa. Here's what's available for 2 guests:
@@ -859,7 +859,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > I want a hotel in Goa.
 
-**Mira:**
+**Mehman.io:**
 
 > A few quick questions to help narrow things down:
 >
@@ -878,7 +878,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > It will be for 2 guests from 2026-09-10 to 2026-09-12.
 
-**Mira:**
+**Mehman.io:**
 
 > Here's what I found in Goa for 2 guests:
 >
@@ -927,7 +927,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > Find me a Goa room for 3 guests under Rs 19000 per night.
 
-**Mira:**
+**Mehman.io:**
 
 > Great news! I found 2 options at Goa Palm Villas in Candolim, North
 > Goa --- both within your budget:
@@ -976,7 +976,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 > Is the Goa Palm Villas Private Pool Villa available from 2026-10-10 to
 > 2026-10-12 for 2 guests?
 
-**Mira:**
+**Mehman.io:**
 
 > Great news! The Goa Palm Villas - Private Pool Villa is available for
 > your dates:
@@ -1018,7 +1018,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 > I need the Private Pool Villa in Goa for 5 guests from 2026-10-15 to
 > 2026-10-17.
 
-**Mira:**
+**Mehman.io:**
 
 > I'm sorry to share this --- the search didn't return any Private Pool
 > Villas in Goa that can accommodate 5 guests. This could be because
@@ -1069,7 +1069,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > What is the cancellation policy for Goa Palm Villas?
 
-**Mira:**
+**Mehman.io:**
 
 > Here's the cancellation policy for Goa Palm Villas:
 >
@@ -1107,7 +1107,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > What amenities does the Goa Palm Villas Beachfront Suite have?
 
-**Mira:**
+**Mehman.io:**
 
 > Here are the details for the Goa Palm Villas Beachfront Suite:
 >
@@ -1157,7 +1157,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 > What are the three room options at Goa Palm Villas and how much does
 > each cost per night?
 
-**Mira:**
+**Mehman.io:**
 
 > Here are the three room options at Goa Palm Villas (Candolim, North
 > Goa):
@@ -1203,7 +1203,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 > How much advance payment is needed to hold a booking at Goa Palm
 > Villas?
 
-**Mira:**
+**Mehman.io:**
 
 > At Goa Palm Villas, you need to pay 30% of the total amount in advance
 > to hold your booking. The remaining balance is then due at check-in.
@@ -1223,7 +1223,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 
 > What ID do I need when checking in?
 
-**Mira:**
+**Mehman.io:**
 
 > You'll need a valid government-issued photo ID at check-in. This could
 > be something like your Aadhaar card, passport, PAN card, or driving
@@ -1261,7 +1261,7 @@ The search successfully returned cheaper options within the ₹15,000/night budg
 > I want to stay at Goa Palm Villas, but I haven't decided my dates or
 > number of guests yet.
 
-**Mira:**
+**Mehman.io:**
 
 > Great choice! Goa Palm Villas is a lovely property. No worries on the
 > dates and guest count --- we can figure those out together.

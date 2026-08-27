@@ -215,8 +215,14 @@ def _call_provider_with_retry(history: list, system_prompt: str, max_retries: in
  
 def build_system_prompt(state: GuestState) -> str:
     today = datetime.now().strftime("%Y-%m-%d (%A)")
-    return f"""You are Mira, a guest-facing hotel booking assistant for a hospitality platform \
-covering multiple properties across India.
+    return f"""You are Mehman.io, a guest-facing hotel booking assistant for a hospitality platform.
+ 
+IMPORTANT: You currently only operate 3 properties, and ALL of them are in Goa, India
+(Goa Palm Villas in Candolim, Goa Heritage Villa in Fontainhas/Panaji, and Goa Backwater
+Retreat in Assagao). If the guest asks about any OTHER city or destination (e.g. Jaipur,
+Manali, Mumbai, anywhere outside Goa), politely tell them you currently only have
+properties available in Goa, and ask if they'd like to explore Goa options instead.
+Do NOT pretend to search other cities or invent availability elsewhere.
  
 Today's date is: {today}
  
@@ -230,6 +236,11 @@ YOUR JOB:
 - When the guest uses a relative date ("next weekend", "in 3 days"), convert it to an
   exact YYYY-MM-DD date yourself using today's date above, then pass the exact date to
   update_guest_state and any other tool. Never pass relative date words into a tool.
+- IMPORTANT: whenever you call a tool that takes property_id (check_availability,
+  get_room_details, calculate_price, get_policy, create_booking_hold, modify_booking_hold),
+  you MUST use the exact property_id returned by search_properties (e.g.
+  "goa-palm-villas") -- NEVER the human-readable property name (e.g. "Goa Palm Villas").
+  Using the wrong value will cause the tool call to fail.
 - Decide what is still missing, and either ask ONE clear question, or call the
   appropriate tool if you have enough information.
 - EFFICIENCY: if you already know enough to call more than one tool (e.g. you
@@ -274,6 +285,13 @@ YOUR JOB:
   your reply that their request has been sent to the hotel team, and include the hotel's
   contact phone number and email from the tool result's "hotel_contact" field, so they have
   a direct contact for reference.
+- POST-BOOKING BEHAVIOR: once the guest state above shows "stage": "hold_created", a booking
+  already exists for this session. Do NOT proactively re-ask about add-ons, dates, guest
+  count, or anything else as if you were still collecting requirements for a first booking.
+  Only act on it again if the guest explicitly says they want to change/upgrade it (see
+  BOOKING CONTINUITY above) or explicitly asks for an add-on themselves. Otherwise, treat
+  further messages as ordinary conversation (answering questions, small talk, etc.) and do
+  not restart or repeat the booking flow.
 - FORMATTING: when presenting room/property options or booking details to the guest, use
   clear line breaks between items -- NOT dense paragraphs and NOT markdown tables (tables
   render as broken text in WhatsApp/Telegram chat apps). Format each option on its own
@@ -415,6 +433,60 @@ def _call_claude(history: list, system_prompt: str, allow_tools: bool = True) ->
     return {"text": " ".join(text_parts).strip(), "tool_calls": tool_calls, "raw_content": raw_content}
  
  
+def _translate_history_to_openai_format(history: list, system_prompt: str) -> list:
+    """Converts our internal Claude-style history into OpenAI/Groq's
+    chat.completions message format.
+ 
+    IMPORTANT: OpenAI-compatible APIs require that when an assistant turn
+    calls MULTIPLE tools at once, they must all be grouped into ONE
+    assistant message with a `tool_calls` list -- not split into separate
+    back-to-back assistant messages. If they're split, the API rejects the
+    request with: "An assistant message with 'tool_calls' must be followed
+    by tool messages responding to each tool_call_id" (HTTP 400), because
+    only the LAST split message actually gets its tool responses attached
+    in the right position. This function groups them correctly."""
+    oa_messages = [{"role": "system", "content": system_prompt}]
+ 
+    for msg in history:
+        if isinstance(msg["content"], str):
+            oa_messages.append({"role": msg["role"], "content": msg["content"]})
+            continue
+ 
+        # content is a list of blocks (text / tool_use / tool_result)
+        text_parts = []
+        tool_calls_list = []
+        tool_result_messages = []
+ 
+        for block in msg["content"]:
+            block_type = block.get("type")
+            if block_type == "text":
+                text_parts.append(block["text"])
+            elif block_type == "tool_use":
+                tool_calls_list.append({
+                    "id": block["id"], "type": "function",
+                    "function": {"name": block["name"], "arguments": json.dumps(block["input"])},
+                })
+            elif block_type == "tool_result":
+                tool_result_messages.append({
+                    "role": "tool", "tool_call_id": block["tool_use_id"], "content": block["content"],
+                })
+ 
+        # ALL tool calls from this one turn go into a SINGLE assistant message
+        if tool_calls_list:
+            oa_messages.append({
+                "role": "assistant",
+                "content": (" ".join(text_parts) if text_parts else None),
+                "tool_calls": tool_calls_list,
+            })
+        elif text_parts:
+            oa_messages.append({"role": msg["role"], "content": " ".join(text_parts)})
+ 
+        # Tool results immediately follow, one message per result, in order
+        oa_messages.extend(tool_result_messages)
+ 
+    return oa_messages
+ 
+ 
 def _call_groq(history: list, system_prompt: str, allow_tools: bool = True) -> dict:
     """Groq/OpenAI-compatible fallback. Note: tool-result formatting differs
     from Claude's, so history format is translated here for this provider."""
@@ -425,22 +497,7 @@ def _call_groq(history: list, system_prompt: str, allow_tools: bool = True) -> d
         "name": t["name"], "description": t["description"], "parameters": t["input_schema"]
     }} for t in TOOL_DEFS]
  
-    # Translate our Claude-style history into OpenAI-style messages
-    oa_messages = [{"role": "system", "content": system_prompt}]
-    for msg in history:
-        if isinstance(msg["content"], str):
-            oa_messages.append({"role": msg["role"], "content": msg["content"]})
-        elif isinstance(msg["content"], list):
-            for block in msg["content"]:
-                if block.get("type") == "text":
-                    oa_messages.append({"role": msg["role"], "content": block["text"]})
-                elif block.get("type") == "tool_result":
-                    oa_messages.append({"role": "tool", "tool_call_id": block["tool_use_id"], "content": block["content"]})
-                elif block.get("type") == "tool_use":
-                    oa_messages.append({"role": "assistant", "content": None, "tool_calls": [{
-                        "id": block["id"], "type": "function",
-                        "function": {"name": block["name"], "arguments": json.dumps(block["input"])}
-                    }]})
+    oa_messages = _translate_history_to_openai_format(history, system_prompt)
  
     try:
         kwargs = dict(model="openai/gpt-oss-20b", max_tokens=1500, temperature=0, messages=oa_messages)
@@ -477,21 +534,7 @@ def _call_openai(history: list, system_prompt: str, allow_tools: bool = True) ->
         "name": t["name"], "description": t["description"], "parameters": t["input_schema"]
     }} for t in TOOL_DEFS]
  
-    oa_messages = [{"role": "system", "content": system_prompt}]
-    for msg in history:
-        if isinstance(msg["content"], str):
-            oa_messages.append({"role": msg["role"], "content": msg["content"]})
-        elif isinstance(msg["content"], list):
-            for block in msg["content"]:
-                if block.get("type") == "text":
-                    oa_messages.append({"role": msg["role"], "content": block["text"]})
-                elif block.get("type") == "tool_result":
-                    oa_messages.append({"role": "tool", "tool_call_id": block["tool_use_id"], "content": block["content"]})
-                elif block.get("type") == "tool_use":
-                    oa_messages.append({"role": "assistant", "content": None, "tool_calls": [{
-                        "id": block["id"], "type": "function",
-                        "function": {"name": block["name"], "arguments": json.dumps(block["input"])}
-                    }]})
+    oa_messages = _translate_history_to_openai_format(history, system_prompt)
  
     try:
         kwargs = dict(model=model, max_tokens=1500, temperature=0, messages=oa_messages)

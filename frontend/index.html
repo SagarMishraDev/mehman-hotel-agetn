@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Mira — Mehman Assignment</title>
+<title>Mehman.io — Mehman Assignment</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -124,7 +124,7 @@
   <div class="chat-col">
     <div class="header">
       <div>
-        <h1>Mira — Hotel Booking Agent</h1>
+        <h1>Mehman.io — Hotel Booking Agent</h1>
         <div class="sub">Mehman.io assignment demo</div>
       </div>
       <button onclick="resetSession()">Reset conversation</button>
@@ -148,10 +148,10 @@
 
 <script>
 const API_BASE = window.location.origin;
-let sessionId = localStorage.getItem('mira_session_id');
+let sessionId = localStorage.getItem('Mehman.io_session_id');
 if (!sessionId) {
   sessionId = 'session-' + Math.random().toString(36).slice(2, 10);
-  localStorage.setItem('mira_session_id', sessionId);
+  localStorage.setItem('Mehman.io_session_id', sessionId);
 }
 
 const messagesEl = document.getElementById('messages');
@@ -217,7 +217,7 @@ async function sendMessage() {
   sendBtn.disabled = true;
 
   addMessage('user', text);
-  const loadingEl = addMessage('loading', 'Mira is thinking...');
+  const loadingEl = addMessage('loading', 'Mehman.io is thinking...');
 
   try {
     const resp = await fetch(`${API_BASE}/chat`, {
@@ -244,7 +244,7 @@ async function resetSession() {
   messagesEl.innerHTML = '';
   traceLog.innerHTML = '<div class="empty-state">No tool calls yet.</div>';
   renderState({});
-  addMessage('agent', "Hi! I'm Mira. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
+  addMessage('agent', "Hi! I'm Mehman.io. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
 }
 
 // Initial load
@@ -265,11 +265,11 @@ async function resetSession() {
         }
       });
     } else {
-      addMessage('agent', "Hi! I'm Mira. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
+      addMessage('agent', "Hi! I'm Mehman.io. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
     }
   } catch (e) {
     renderState({});
-    addMessage('agent', "Hi! I'm Mira. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
+    addMessage('agent', "Hi! I'm Mehman.io. Tell me what kind of stay you're looking for — destination, dates, number of guests, anything else on your mind.");
   }
 })();
 </script>

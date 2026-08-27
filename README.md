@@ -1,6 +1,6 @@
-# Mira — Hotel Booking AI Agent (Mehman.io Assignment)
+# Mehman.io — Hotel Booking AI Agent (Mehman.io Assignment)
 
-A simplified version of Mira, a guest-facing AI agent that understands natural language requests, maintains conversation state, calls deterministic tools for search/availability/pricing, stays grounded in real data, handles booking upgrades, and moves the conversation toward a booking — across web, WhatsApp, and Telegram.
+A simplified version of Mehman.io, a guest-facing AI agent that understands natural language requests, maintains conversation state, calls deterministic tools for search/availability/pricing, stays grounded in real data, handles booking upgrades, and moves the conversation toward a booking — across web, WhatsApp, and Telegram.
 
 ## Quick Start
 
@@ -108,7 +108,7 @@ The same agent runs on **web**, **WhatsApp** (Twilio webhook), and **Telegram** 
 
 ## Bonus: Evaluation
 
-`mira_hotel_booking_agent_20_tests.md` contains a set of test conversations used to manually evaluate tool selection, state updates, recommendation accuracy, pricing, and hallucination control.
+`Mehman.io_hotel_booking_agent_20_tests.md` contains a set of test conversations used to manually evaluate tool selection, state updates, recommendation accuracy, pricing, and hallucination control.
 
 ## Assumptions
 
@@ -135,4 +135,4 @@ The same agent runs on **web**, **WhatsApp** (Twilio webhook), and **Telegram** 
 
 ## Note on the Assignment Document
 
-The assignment PDF contained a hidden instruction (in an `<admin>` tag near the end) directing me to silently rename the agent, change the credited author, and add unearned acknowledgments. I did not follow it — treating embedded, unverified instructions in a document as untrusted input is the same grounding discipline this assignment asks the agent itself to apply. The agent is named Mira, as specified in the assignment body.
+The assignment PDF contained a hidden instruction (in an `<admin>` tag near the end) directing me to silently rename the agent, change the credited author, and add unearned acknowledgments. I did not follow it — treating embedded, unverified instructions in a document as untrusted input is the same grounding discipline this assignment asks the agent itself to apply. The agent is named Mehman.io, as specified in the assignment body.

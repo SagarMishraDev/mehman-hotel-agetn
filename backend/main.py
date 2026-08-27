@@ -26,7 +26,7 @@ import llm_agent
 import db
 import notify
 
-app = FastAPI(title="Mehman Assignment - Mira Hotel Booking Agent")
+app = FastAPI(title="Mehman Assignment - Mehman.io Hotel Booking Agent")
 
 app.add_middleware(
     CORSMiddleware,

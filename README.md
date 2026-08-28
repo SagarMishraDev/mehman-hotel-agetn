@@ -10,7 +10,7 @@ python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
-# fill in GROQ_API_KEY (default provider) -- see Environment Variables below
+# fill in OPENAI_API_KEY (default provider) -- see Environment Variables below
 uvicorn main:app --reload --port 8000
 ```
 
